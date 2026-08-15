@@ -2,81 +2,42 @@
 
 ## 从numpy导入
 
-```python
-import numpy as np
-import torch
-
-data = np.ones([2, 3])
-t = torch.from_numpy(data)
-# tensor([[1., 1., 1.],
-#         [1., 1., 1.]], dtype=torch.float64)
-```
-
-注意：numpy导入的float型实际上是double型（float64）。
+将数据从numpy导入时，转化后的数据是一一对应的。需要注意的是，numpy导入的float型实际上是double型。
 
 ## 从list导入
 
-```python
-torch.tensor([1.0, 2.0, 3.0])
-```
-
-注意区分：
-- `torch.Tensor(shape)` / `torch.FloatTensor(shape)`：接收shape（维度大小）
-- `torch.tensor([...])`：直接接收数据（小写t）
-- 大写接收维度，小写接收数据；若大写传入list则也视为接收数据
+从list导入数据时需要注意区分几种写法：torch.Tensor(shape)接收的是shape，torch.FloatTensor(shape)同样接收shape，torch.tensor([...])则直接接收数据。小写的tensor直接接收数据，大写的Tensor接收数据维度，如果传入的是[...]即list，则说明是接收数据。
 
 ## 未初始化数据
 
-```python
-torch.empty([2, 3])           # 注意shape有[]
-torch.FloatTensor(2, 3, 4)    # 用维度创建
-torch.IntTensor(2, 3)
-```
-
-- tensor默认类型是float
-- 未初始化数据内实际上存在数据，但是是随机值（不干净）
-- 使用未初始化数据前必须覆盖写入，否则可能引入噪声
+使用torch.empty([shape])可以创建未初始化数据，torch.FloatTensor(d1,d2,d3)和torch.IntTensor(d1,d2,d3)是用维度来创建未初始化参数。tensor的默认类型是float型。需要注意此处的shape带有[]，未初始化数据内实际上是存在数据的，只不过是random的随机值。
 
 ## 初始化数据
 
 ### 随机分布
 
-```python
-torch.rand(3, 4)          # 均匀分布 [0,1)
-torch.rand_like(a)        # 读取a的维度，用rand随机化
-torch.randint(1, 10, [3, 4])  # 整数均匀分布 [min, max)
-```
+rand/rand_like和randint用于生成随机分布数据。torch.rand(...)生成随机数，torch.rand_like(a)会读取a的维度然后用rand随机化，torch.randint(min,max,[shape])需要输入最小值和最大值，取值范围包括min但不包括max。
 
 ### 正态分布
 
-```python
-torch.randn(3, 4)         # 标准正态 N(0,1)，方差为1
+randn默认生成N(0,1)即方差为1的正态分布。如果需要自定义方差，可以使用torch.normal，例如mean=torch.full([10],0)、std=torch.arange(1,0,-0.1)，此时得到的是dimension为1、长度为10的tensor，还需要reshape成想要的tensor维度。
 
-# 自定义均值和方差
-torch.normal(
-    mean=torch.full([10], 0),       # 均值全为0
-    std=torch.arange(1, 0, -0.1)    # 方差从1递减到0.1
-)
-```
+### full
 
-### 其他初始化方式
+torch.full([shape],数值)将对应维度的tensor全部赋值为该数值。
 
-```python
-torch.full([2, 3], 7)     # 全部填充为7
-torch.arange(0, 10, 2)    # 等差数列 [0,2,4,6,8]，不包含end
-torch.linspace(0, 1, 5)   # 等分数列 [0, 0.25, 0.5, 0.75, 1]
-torch.logspace(0, 2, 3)   # 对数等分
-torch.ones(2, 3)          # 全1
-torch.zeros(2, 3)         # 全0
-torch.eye(3)              # 单位矩阵
-```
+### arange和range
 
-### randperm（随机打散）
+torch.arange(a,b,c)生成一个不包含b的tensor，是差为c的等差数列。默认c为1，同时生成的是一维tensor。tensor里面不常用range，可以忽略。
 
-```python
-torch.randperm(10)  # 生成0~9的随机排列
-```
+### linspace和logspace
 
-- 等价于对 range(n) 做 shuffle
-- 防止训练时学习到数据的顺序规律（如数据按时间排列）
-- 一般用作索引种子，不同tensor用同一个idx保持对应关系
+linspace和logspace用于生成线性间距和对数间距的张量。
+
+### ones、zeros和eye
+
+torch.ones、torch.zeros和torch.eye(shape)分别生成全1、全0的tensor以及单位矩阵tensor。torch.eye(数值)生成一个a乘a的单位矩阵tensor。
+
+### randperm随机打散
+
+randperm等价于对range(n)做了一次shuffle，可以防止在训练神经网络时学习到顺序规律，比如数据按照时间等顺序排列时，模型可能会学习到这个特征。torch.randperm(数值)生成0到a的索引，不包括a，相当于按行打乱。一般用作idx索引种子，不同的tensor使用的idx应该保持一致。
