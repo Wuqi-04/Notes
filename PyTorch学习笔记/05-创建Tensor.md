@@ -41,3 +41,14 @@ torch.ones、torch.zeros和torch.eye(shape)分别生成全1、全0的tensor以�
 ### randperm随机打散
 
 randperm等价于对range(n)做了一次shuffle，可以防止在训练神经网络时学习到顺序规律，比如数据按照时间等顺序排列时，模型可能会学习到这个特征。torch.randperm(数值)生成0到a的索引，不包括a，相当于按行打乱。一般用作idx索引种子，不同的tensor使用的idx应该保持一致。
+
+## 配图
+
+![图1 从numpy导入数据](images/05_from_numpy.png)
+
+*图1 从numpy导入数据*
+
+![图2 从list导入数据](images/05_from_list.png)
+
+*图2 从list导入数据*
+
