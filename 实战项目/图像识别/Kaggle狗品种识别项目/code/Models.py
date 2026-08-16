@@ -126,7 +126,7 @@ class CBAMResNet(nn.Module):
         return self.fc(x)
 
 class MultiScaleResNet(nn.Module):
-    """模型3: 多尺度特征融合（FPN 方式）"""
+    """模型3: 多尺度特征融合（原版，FPN方式，存在layer4丢弃等问题）"""
     def __init__(self, num_classes=120):
         super().__init__()
         bb = models.resnet50(weights=models.ResNet50_Weights.DEFAULT)
@@ -158,7 +158,7 @@ class MultiScaleResNet(nn.Module):
         return self.head(self.fuse(p1))
 
 class FeedbackResNet(nn.Module):
-    """模型4: 反馈网络（Rethinking 版，训练时两次前向）"""
+    """模型4: 反馈网络（原版，训练推理不一致 + refine随机初始化）"""
     def __init__(self, num_classes=120):
         super().__init__()
         bb = models.resnet50(weights=models.ResNet50_Weights.DEFAULT)
@@ -187,6 +187,80 @@ class FeedbackResNet(nn.Module):
         c4n = self.layer4(self.layer3(self.layer2(c1r)))
         logits2 = self.classifier(F.adaptive_avg_pool2d(c4n, 1).flatten(1))
         return logits1, logits2
+
+class MultiScaleResNetV2(nn.Module):
+    """模型5: 多尺度特征融合（修复版：四层GAP拼接，保留layer4）"""
+    def __init__(self, num_classes=120):
+        super().__init__()
+        bb = models.resnet50(weights=models.ResNet50_Weights.DEFAULT)
+        self.stem = nn.Sequential(bb.conv1, bb.bn1, bb.relu, bb.maxpool)
+        self.layer1 = bb.layer1   # 256 channels, 浅层细节
+        self.layer2 = bb.layer2   # 512 channels
+        self.layer3 = bb.layer3   # 1024 channels
+        self.layer4 = bb.layer4   # 2048 channels, 深层语义（之前被丢弃）
+        self.avgpool = nn.AdaptiveAvgPool2d(1)
+        # 四层特征拼接：256+512+1024+2048=3840
+        self.fc = _make_classifier(256 + 512 + 1024 + 2048, num_classes)
+
+    def forward(self, x):
+        x = self.stem(x)
+        c1 = self.layer1(x)
+        c2 = self.layer2(c1)
+        c3 = self.layer3(c2)
+        c4 = self.layer4(c3)          # 保留layer4，不再丢弃
+        # 每层分别全局平均池化后拼接，浅层细节和深层语义都参与分类
+        f1 = self.avgpool(c1).flatten(1)
+        f2 = self.avgpool(c2).flatten(1)
+        f3 = self.avgpool(c3).flatten(1)
+        f4 = self.avgpool(c4).flatten(1)
+        feat = torch.cat([f1, f2, f3, f4], dim=1)
+        return self.fc(feat)
+
+class FeedbackResNetV2(nn.Module):
+    """模型6: 反馈网络（修复版：训练推理一致 + 残差恒等初始化）"""
+    def __init__(self, num_classes=120):
+        super().__init__()
+        bb = models.resnet50(weights=models.ResNet50_Weights.DEFAULT)
+        self.stem = nn.Sequential(bb.conv1, bb.bn1, bb.relu, bb.maxpool)
+        self.layer1 = bb.layer1; self.layer2 = bb.layer2
+        self.layer3 = bb.layer3; self.layer4 = bb.layer4
+        self.classifier = nn.Linear(2048, num_classes)
+        self.feedback = nn.Sequential(
+            nn.Linear(2048 + num_classes, 512), nn.ReLU(inplace=True),
+            nn.Linear(512, 256), nn.Sigmoid()
+        )
+        self.refine = nn.Sequential(
+            nn.Conv2d(256, 256, 3, padding=1),
+            nn.BatchNorm2d(256), nn.ReLU(inplace=True)
+        )
+        # 修复1：将refine最后一个BN的weight初始化为0
+        # BN输出 = weight * normalized + bias，weight=0且bias=0时输出为0
+        # 经ReLU后仍为0，因此训练开始时refine输出0，c1r = c1 + 0 = c1
+        # 反馈路径初始为恒等映射，不破坏预训练特征分布
+        nn.init.zeros_(self.refine[1].weight)
+        nn.init.zeros_(self.refine[1].bias)
+
+    def _second_forward(self, c1, feat, logits1):
+        """第二次前向：反馈修正"""
+        gate = self.feedback(torch.cat([feat, logits1.detach()], dim=1))
+        # 修复2：残差连接 c1r = c1 + refine(...)，而不是直接替换c1
+        c1r = c1 + self.refine(c1 * gate.view(c1.size(0), -1, 1, 1))
+        c4n = self.layer4(self.layer3(self.layer2(c1r)))
+        return self.classifier(F.adaptive_avg_pool2d(c4n, 1).flatten(1))
+
+    def forward(self, x):
+        x0 = self.stem(x)
+        c1 = self.layer1(x0); c2 = self.layer2(c1)
+        c3 = self.layer3(c2); c4 = self.layer4(c3)
+        feat = F.adaptive_avg_pool2d(c4, 1).flatten(1)
+        logits1 = self.classifier(feat)
+        logits2 = self._second_forward(c1, feat, logits1)
+        if self.training:
+            # 训练时返回两次结果，损失 = 0.3*loss1 + 0.7*loss2
+            return logits1, logits2
+        else:
+            # 修复3：推理时也做两次前向，取平均，和训练路径一致
+            return (logits1 + logits2) / 2
 
 # class SEMultiScaleResNet(nn.Module):
 #     """模型5: SE + 多尺度组合（单模块结果出来后再决定是否训练）"""
