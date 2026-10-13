@@ -360,6 +360,7 @@ $${\left[ A \right]}_{\text{补}}-{\left[ B \right]}_{\text{补}}={\left[ A \rig
 【算数右移与 $C$语言的除法直接截断小数部分得到结果可能不同】
 
 加减运算（字长为 $n+1$）
+
 $${\left[ A+B \right]}_{\text{补}}={\left[ A \right]}_{\text{补}}+{\left[ B \right]}_{\text{补}}\left( \mathrm{mod} {2}^{n+1} \right)$$
 
 $${\left[ A-B \right]}_{\text{补}}={\left[ A \right]}_{\text{补}}+{\left[ -B \right]}_{\text{补}}\left( \mathrm{mod} 2^{n+1} \right)$$
